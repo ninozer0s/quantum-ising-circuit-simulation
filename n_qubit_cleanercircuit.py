@@ -9,7 +9,7 @@ from collections import OrderedDict
 # -----------------
 # User parameters
 # -----------------
-n = 8
+n = 4                       # beliebiges gerades n: 4, 8, 16, ...
 lam_list = [0.6, 1.2, 1.8]
 shots = 2 * 4096
 flip_all_for_lam_gt_1 = True
@@ -58,9 +58,9 @@ def F_block_dagger(k, n):
         [0, 0,     0,     -tw],
     ], dtype=complex)
     inst = Operator(F.conj().T).to_instruction()
-    inst.name = f"F†[{k}|{n}]"     
+    inst.name = f"F†[{k}|{n}]"
     phi = 2*np.pi*k/n
-    inst.label = f"φ={phi:.3f}"         
+    inst.label = f"φ={phi:.3f}"
     return inst
 
 def B_block_dagger(theta):
@@ -73,11 +73,9 @@ def B_block_dagger(theta):
         [1j*s, 0, 0,  c ],
     ], dtype=complex)
     inst = Operator(B.conj().T).to_instruction()
-    inst.name = "B†"                  
-    inst.label = f"θ={theta:.3f}"      
+    inst.name = "B†"
+    inst.label = f"θ={theta:.3f}"
     return inst
-
-
 
 def theta_k(k, n, lam):
     ck = np.cos(2*np.pi*k/n)
@@ -124,19 +122,55 @@ def counts_full_norm(counts, n):
     return OrderedDict((b, counts.get(b, 0)/total) for b in all_bitstrings(n))
 
 # -----------------
-# Circuit construction
+# n=4-Spezialfall (paper-exakt)
 # -----------------
-def build_circuit_counts(n, lam):
-    qc = QuantumCircuit(n, n)
+def build_circuit_counts_n4(lam):
+    n_local = 4
+    qc = QuantumCircuit(n_local, n_local)
 
-    # Initial state:
+    # Initial state für λ<1 so gewählt, dass nach FFT†+Bog†
+    # der Zustand aus Gl.(26) rauskommt (1er- und 3er-Peaks).
     if lam < 1:
-        #  |1010>   = q3 q2 q1 q0 = 1 0 1 0
+        # das ist die Variante, die wir vorher empirisch getestet haben
         qc.x(1)
         qc.x(2)
         qc.x(3)
     else:
         # |0000>
+        pass
+
+    qc.barrier()
+
+    # Undo Bogoliubov
+    qc.append(bogoliubov_layer_subcircuit(n_local, lam).to_instruction(), range(n_local))
+    qc.barrier()
+
+    # Undo FFT
+    qc.append(fermionic_fft_dagger_subcircuit(n_local).to_instruction(), range(n_local))
+    qc.barrier()
+
+    # Optional flip für λ>1, damit Hauptpeak bei 1111
+    if lam > 1 and flip_all_for_lam_gt_1:
+        for q in range(n_local):
+            qc.x(q)
+
+    # Korrektur der Qubit-Order wie im alten, funktionierenden n=4-Code
+    qc.swap(3, 2)
+
+    qc.measure(range(n_local), range(n_local))
+    return qc
+
+# -----------------
+# Allgemeiner Circuit (n != 4)
+# -----------------
+def build_circuit_counts_generic(n, lam):
+    qc = QuantumCircuit(n, n)
+
+    # Allgemeiner Initialzustand im diagonalen Bild:
+    # |000...01> für λ<1, |000...00> für λ>1
+    if lam < 1:
+        qc.x(n-1)
+    else:
         pass
 
     qc.barrier()
@@ -149,16 +183,20 @@ def build_circuit_counts(n, lam):
     qc.append(fermionic_fft_dagger_subcircuit(n).to_instruction(), range(n))
     qc.barrier()
 
-    # Optional flip for λ>1 so main peak is at 1111
+    # Optional flip für λ>1, damit Hauptpeak bei 111...1
     if lam > 1 and flip_all_for_lam_gt_1:
         for q in range(n):
             qc.x(q)
 
-    # Correct qubit order
-    qc.swap(3,2)
-
     qc.measure(range(n), range(n))
     return qc
+
+# Wrapper: wählt je nach n die richtige Version
+def build_circuit_counts(n, lam):
+    if n == 4:
+        return build_circuit_counts_n4(lam)
+    else:
+        return build_circuit_counts_generic(n, lam)
 
 # -----------------
 # Draw standalone internal circuits once
@@ -168,7 +206,7 @@ circuit_drawer(
     fft_circ,
     output="mpl",
     style=BLOCK_STYLE,
-    
+    reverse_bits=False,
     filename=os.path.join(circ_dir, f"fft_dagger_n{n}.png")
 )
 
@@ -181,20 +219,22 @@ results = []
 for lam in lam_list:
     qc = build_circuit_counts(n, lam)
 
-    # Draw Bogoliubov† layer for this λ
+    # Bogoliubov†-Layer für dieses λ
     bog_circ = bogoliubov_layer_subcircuit(n, lam)
     circuit_drawer(
         bog_circ,
         output="mpl",
         style=BLOCK_STYLE,
+        reverse_bits=False,
         filename=os.path.join(circ_dir, f"bogoliubov_dagger_n{n}_lam_{lam:.2f}.png")
     )
 
-    # Draw full circuit for this λ
+    # Voller Circuit für dieses λ
     circuit_drawer(
         qc,
         output="mpl",
         style=BLOCK_STYLE,
+        reverse_bits=False,
         filename=os.path.join(circ_dir, f"full_circuit_n{n}_lam_{lam:.2f}.png")
     )
 
@@ -207,7 +247,7 @@ for lam in lam_list:
     for bit, p in sorted(full.items(), key=lambda x:x[1], reverse=True)[:8]:
         print(f"  {bit}  p={p:.6f}")
 
-    # Plot single histogram
+    # Einzel-Histogramm
     labels = all_bitstrings(n)
     x = np.arange(len(labels))
     fig, ax = plt.subplots(figsize=(50, 15))
@@ -222,7 +262,7 @@ for lam in lam_list:
                 dpi=150, bbox_inches="tight")
     plt.close(fig)
 
-# Combined grid
+# Kombiniertes Grid
 labels = all_bitstrings(n)
 cols = len(results)
 fig, axes = plt.subplots(1, cols, figsize=(5*cols, 4), sharey=True)
