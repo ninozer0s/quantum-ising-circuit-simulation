@@ -9,7 +9,7 @@ from collections import OrderedDict
 # -----------------
 # User parameters
 # -----------------
-n = 4        
+n = 4   
 lam_list = [0.6, 1.2, 1.8]
 shots = 2 * 4096
 flip_all_for_lam_gt_1 = True
