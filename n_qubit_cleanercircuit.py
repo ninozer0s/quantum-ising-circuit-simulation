@@ -6,10 +6,21 @@ import numpy as np, itertools, os
 import matplotlib.pyplot as plt
 from collections import OrderedDict
 
+
+plt.rcParams.update({
+    "font.size": 14,
+    "axes.titlesize": 14,
+    "axes.labelsize": 14,
+    "xtick.labelsize": 14,
+    "ytick.labelsize": 14,
+    "legend.fontsize": 14
+})
+
+
 # -----------------
-# User parameters
+# Simulation parameters
 # -----------------
-n = 4   
+n = 4
 lam_list = [0.6, 1.2, 1.8]
 shots = 2 * 4096
 flip_all_for_lam_gt_1 = True
@@ -246,17 +257,44 @@ for lam in lam_list:
 
     labels = all_bitstrings(n)
     x = np.arange(len(labels))
-    fig, ax = plt.subplots(figsize=(50, 15))
+    fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(x, [full[b] for b in labels])
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=90)
-    plt.title(f"Ising n={n} — counts (λ={lam}, shots={shots})")
+    plt.title(f"Ising n={n}: counts (λ={lam}, shots={shots})")
     plt.ylabel("Probability")
     plt.ylim(0, max(full.values()) * 1.25)
     plt.grid(axis='y', alpha=0.3)
     fig.savefig(os.path.join(out_dir, f"hist_lambda_{lam:.2f}_n{n}.png"),
-                dpi=150, bbox_inches="tight")
+                dpi=300, bbox_inches="tight")
     plt.close(fig)
+    # -------------------------
+    # top 20 bitstring histogram
+    # -------------------------
+    sorted_items = sorted(full.items(), key=lambda x: x[1], reverse=True)
+    top_k = 20
+    top = sorted_items[:top_k]
+
+    labels_top = [b for b, _ in top]
+    values_top = [p for _, p in top]
+
+    fig2, ax2 = plt.subplots(figsize=(12, 6))
+
+    x2 = np.arange(len(labels_top))
+    ax2.bar(x2, values_top)
+
+    ax2.set_xticks(x2)
+    ax2.set_xticklabels(labels_top, rotation=45, fontsize=14)
+
+    ax2.set_title(f"Ising n={n}: top {top_k} bitstrings (λ={lam}, shots={shots})",
+                  fontsize=16)
+    ax2.set_ylabel("Probability", fontsize=14)
+    ax2.grid(axis='y', alpha=0.3)
+
+    fig2.tight_layout()
+    fig2.savefig(os.path.join(out_dir, f"hist_top{top_k}_lambda_{lam:.2f}_n{n}.png"),
+                 dpi=300, bbox_inches="tight")
+    plt.close(fig2)
 
 # combined grid
 labels = all_bitstrings(n)
@@ -268,15 +306,19 @@ ymax = max(max(f.values()) for _, f in results) * 1.25
 for ax, (lam, full) in zip(axes, results):
     x = np.arange(len(labels))
     ax.bar(x, [full[b] for b in labels])
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=90)
+    if n==4: 
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, rotation=90)
+    else:
+        ax.set_xticks([])
+        ax.set_xlabel("")
     ax.set_title(f"λ={lam}")
     ax.set_ylim(0, ymax)
     ax.grid(axis='y', alpha=0.3)
 
 axes[0].set_ylabel("Probability")
-fig.suptitle(f"Ising n={n} — counts (shots={shots})", y=0.98)
+fig.suptitle(f"Ising n={n}: counts (shots={shots})", y=0.98)
 fig.tight_layout()
 fig.savefig(os.path.join(out_dir, f"histos_grid_n{n}.png"),
-            dpi=150, bbox_inches="tight")
+            dpi=300, bbox_inches="tight")
 plt.show()
